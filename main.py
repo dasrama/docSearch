@@ -1,6 +1,4 @@
-# placeholder
 from fastapi import FastAPI, UploadFile, File, Form
-import uvicorn
 import os
 
 from ingest import ingest_pdf
@@ -26,7 +24,3 @@ async def ask_endpoint(query: str = Form(...), k: int = Form(4), persist_dir: st
 	"""Ask a question against the ingested corpus."""
 	result = answer_with_rag(query, persist_dir=persist_dir, top_k=k)
 	return result
-
-
-if __name__ == "__main__":
-	uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=False)
