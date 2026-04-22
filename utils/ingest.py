@@ -3,7 +3,7 @@ import requests
 import pdfplumber
 import chromadb
 
-from utils import chunk_text
+from utils.helper import chunk_text
 
 
 OLLAMA_URL = "http://localhost:11434/api/embed"

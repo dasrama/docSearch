@@ -73,8 +73,10 @@ Answer concisely and cite sources.
             "stream": False
         }
     )
+    print(gen_resp)
     gen_resp.raise_for_status()
     gen_data = gen_resp.json()
+    print(gen_data)
 
     answer = gen_data.get("response", "")
 

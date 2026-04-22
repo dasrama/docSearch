@@ -1,9 +1,9 @@
 from fastapi import FastAPI, UploadFile, File, Form
 import os
 
-from ingest import ingest_pdf
-from query import answer_with_rag
-from utils import ensure_dir
+from utils.ingest import ingest_pdf
+from utils.query import answer_with_rag
+from utils.helper import ensure_dir
 
 app = FastAPI(title="RAG Backend (CPU local)")
 
