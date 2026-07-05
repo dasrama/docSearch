@@ -1,68 +1,48 @@
 import requests
-import chromadb
-
+import redis
+from redisvl.index import SearchIndex
+from redisvl.query import VectorQuery
+from redisvl.utils.vectorize import HFTextVectorizer
 from config.settings import settings
 
-
-OLLAMA_EMBED_URL = "http://localhost:11434/api/embed"
 OLLAMA_GEN_URL = "http://localhost:11434/api/generate"
-EMBED_MODEL = "nomic-embed-text"
 LLM_MODEL = "gemma3:270m"
 
+def answer_with_rag(query: str, redis_url: str = "redis://localhost:6379", top_k: int = 4):
+    # 1. Embed query using same model as ingestion
+    hf = HFTextVectorizer(model="sentence-transformers/all-MiniLM-L6-v2")
+    qvec = hf.embed(query)
 
-def answer_with_rag(query: str, persist_dir: str = settings.persist_dir, top_k: int = 4):
+    # 2. Query Redis
+    redis_client = redis.Redis.from_url(redis_url)
+    index = SearchIndex.from_existing("pdf_index", redis_client=redis_client)
     
-    # 1. Embed query (DIRECT)
-    embed_resp = requests.post(
-        OLLAMA_EMBED_URL,
-        json={
-            "model": EMBED_MODEL,
-            "input": [query]
-        }
+    vquery = VectorQuery(
+        vector=qvec,
+        vector_field_name="text_embedding",
+        return_fields=["content", "source", "page"],
+        num_results=top_k
     )
-    embed_resp.raise_for_status()
-    embed_data = embed_resp.json()
-
-    if "embeddings" not in embed_data:
-        raise ValueError(f"Invalid embedding response: {embed_data}")
-
-    qvec = embed_data["embeddings"][0]
-
-    # 2. Query ChromaDB (DIRECT)
-    client = chromadb.PersistentClient(path=persist_dir)
-    collection = client.get_or_create_collection(name=settings.collection_name)
-
-    results = collection.query(
-        query_embeddings=[qvec],
-        n_results=top_k
-    )
-
-    docs = results.get("documents", [[]])[0]
-    metas = results.get("metadatas", [[]])[0]
+    results = index.query(vquery)
 
     # 3. Build context
-    context_parts = []
-    sources = []
-
-    for d, m in zip(docs, metas):
-        context_parts.append(d)
-        src = m.get("source") if isinstance(m, dict) else m
-        sources.append(src)
-
+    context_parts = [r["content"] for r in results]
+    print("context_parts", context_parts)
+    sources = [r.get("source") for r in results]
     context = "\n\n---\n\n".join(context_parts)
 
     # 4. Build prompt
     prompt = f"""
-Use the following context to answer the question.
-If the answer is not in the context, say "I don't know".
+        Use the following context to answer the question.
+        If the answer is not in the context, say "I don't know".
 
-Context:
-{context}
+        Context:
+        {context}
 
-Question: {query}
+        Question: {query}
 
-Answer concisely and cite sources.
-"""
+        Answer concisely and cite sources.
+    """
 
     # 5. Call LLM (DIRECT)
     gen_resp = requests.post(
@@ -73,11 +53,8 @@ Answer concisely and cite sources.
             "stream": False
         }
     )
-    print(gen_resp)
     gen_resp.raise_for_status()
     gen_data = gen_resp.json()
-    print(gen_data)
-
     answer = gen_data.get("response", "")
 
     return {
