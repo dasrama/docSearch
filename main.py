@@ -3,24 +3,22 @@ import os
 
 from utils.ingest import ingest_pdf
 from utils.query import answer_with_rag
-from utils.helper import ensure_dir
+from config.settings import settings
 
-app = FastAPI(title="RAG Backend (CPU local)")
+app = FastAPI(title="DocSearch API")
 
 
 @app.post("/ingest")
-async def ingest_endpoint(file: UploadFile = File(...), persist_dir: str = Form("./chroma_db")):
+async def ingest_endpoint(file: UploadFile = File(...)):
 	"""Upload a PDF file and ingest into the vector store (synchronous ingestion)."""
-	ensure_dir(persist_dir)
-	file_path = os.path.join(persist_dir, file.filename)
-	with open(file_path, "wb") as f:
+	with open(file.filename, "wb") as f:
 		f.write(await file.read())
-	count = ingest_pdf(file_path, persist_dir=persist_dir)
+	count = ingest_pdf(file.filename, redis_url=settings.REDIS_URL)
 	return {"status": "ingested", "file": file.filename, "chunks": count}
 
 
 @app.post("/ask")
-async def ask_endpoint(query: str = Form(...), k: int = Form(4), persist_dir: str = Form("./chroma_db")):
+async def ask_endpoint(query: str = Form(...), k: int = Form(4)):
 	"""Ask a question against the ingested corpus."""
-	result = answer_with_rag(query, persist_dir=persist_dir, top_k=k)
+	result = answer_with_rag(query, redis_url=settings.REDIS_URL, top_k=k)
 	return result
